@@ -1,0 +1,12 @@
+version: "3"
+
+tasks:
+  img:build:
+    cmds:
+      - cmd: docker build --platform linux/amd64 -t codspeed-playground .
+  img:run:
+    cmds:
+      - cmd: docker run --platform linux/amd64 --rm -it -v "$(pwd):/app" codspeed-playground
+  img:run2:
+    cmds:
+      - cmd: docker run --platform linux/amd64 --privileged --cap-add=SYS_PTRACE --rm -it -v "$(pwd):/app" codspeed-playground
