@@ -1,0 +1,24 @@
+$schema: https://raw.githubusercontent.com/CodSpeedHQ/codspeed/refs/heads/main/schemas/codspeed.schema.json
+
+# Global options applied to all benchmarks
+options:
+  warmup-time: "0.2s"
+  max-time: 1s
+
+# List of benchmarks to run
+benchmarks:
+  - name: two sleeps
+    exec: sleep 1 && sleep 1
+    # Override global options for this benchmark
+    options:
+      max-rounds: 20
+
+  - name: list root
+    exec: ls /
+    options:
+      max-time: 200ms
+
+  - name: display system info
+    exec: uname -a
+    options:
+      min-time: 200ms
