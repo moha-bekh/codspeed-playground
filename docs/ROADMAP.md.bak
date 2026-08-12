@@ -1,0 +1,124 @@
+# Roadmap — Préparation stage CodSpeed (J-20 → 31 août)
+
+**Poste :** Systems Engineer Intern — instrumentation de perf, profiling, runtime Linux, benchmark runners.
+**Objectif du plan :** pas de bouquins cover-to-cover, mais de la compréhension solide + de la pratique directe sur `codspeed-playground` et sur les repos publics CodSpeed. Chaque jour = un peu de théorie ciblée + un exercice concret dans le repo.
+
+Priorités du mentor, dans l'ordre :
+1. Processus Linux (fork/exec, mémoire virtuelle, `/proc/<pid>`, chargement des shared objects)
+2. Syscalls courants
+3. Intégrations CodSpeed (`codspeed-rust` + `instrument-hooks`, puis CLI `codspeed`)
+4. Graphes basiques (BFS/DFS)
+5. Stack unwinding (frame pointer vs DWARF) — via `samply`
+6. eBPF basics — via `memtrack`
+
+---
+
+## Semaine 1 (J1-J7) — Fondations Linux : processus, mémoire, syscalls
+
+**But de la semaine :** être capable d'expliquer, sans notes, ce qui se passe entre `execve()` et le premier `main()`, et de naviguer dans `/proc` à l'aise.
+
+- **J1 — fork/exec/wait**
+  - Théorie : différence `fork()` (copie du processus, COW) vs `exec*()` (remplacement de l'image mémoire) vs `posix_spawn`. Pourquoi `codspeed exec -- ./binaire` doit gérer un sous-processus.
+  - Pratique : écrire un petit `tmp.c` (tu en as déjà un) qui fait `fork()` + `execve()` d'un binaire de `playground`, et observer avec `strace -f`.
+
+- **J2 — Mémoire virtuelle**
+  - Théorie : pages, table des pages, `mmap`, COW, différence heap/stack/mmap regions, ASLR.
+  - Pratique : lancer `playground` en benchmark et regarder `/proc/<pid>/maps` et `/proc/<pid>/smaps` pendant l'exécution. Identifier les régions (binaire, libc, stack, heap).
+
+- **J3 — `/proc/<pid>` en profondeur**
+  - Théorie : `status`, `stat`, `maps`, `smaps`, `fd/`, `task/<tid>` (threads).
+  - Pratique : script bash qui, pendant un `codspeed exec`, dump périodiquement `/proc/<pid>/status` et `/proc/<pid>/maps` dans un fichier — comprendre à quoi un instrument de mesure "regarde" pour avoir des métriques (RSS, threads, etc.).
+
+- **J4 — Chargement des shared objects**
+  - Théorie : rôle de `ld.so`, `LD_PRELOAD`, résolution dynamique (PLT/GOT), pourquoi `instrument-hooks` s'injecte probablement via une lib partagée.
+  - Pratique : `ldd` sur le binaire compilé de `playground`, puis essayer un `LD_PRELOAD` avec une petite lib qui hook `malloc` et print un message.
+
+- **J5 — Syscalls courants**
+  - Théorie : `clone`, `ptrace`, `perf_event_open`, `mmap`, `read/write`, `ioctl` — dans quel contexte un profiler/instrumenteur les utilise.
+  - Pratique : `strace -c` sur un run `codspeed exec` de `playground` → regarder la distribution des syscalls, essayer d'expliquer chacun des plus fréquents.
+
+- **J6 — `ptrace` et attache de processus**
+  - Théorie : comment un débogueur/profiler s'attache à un processus (`PTRACE_ATTACH`, `PTRACE_PEEKTEXT`, signaux `SIGSTOP`/`SIGTRAP`).
+  - Pratique : lire le mini-exemple `simpleton/stack-unwind-samples` (backtrace par frame pointer via `ptrace`) pour voir le principe en ~30 lignes de C.
+
+- **J7 — Consolidation + petit projet**
+  - Écrire un mini "process inspector" en Rust ou C dans `playground` : lance un binaire enfant, et pendant qu'il tourne, lit `/proc/<pid>/maps` + compte les syscalls avec `strace` piloté par script. Objectif : que ce soit toi qui "instrumentes" un process, pas juste que tu lises sur le sujet.
+
+---
+
+## Semaine 2 (J8-J14) — Intégrations CodSpeed + stack unwinding
+
+**But de la semaine :** comprendre concrètement comment `codspeed-rust` → `instrument-hooks` → CLI `codspeed` s'articulent, et ce qu'apporte `samply` pour l'unwinding.
+
+- **J8 — Setup produit sans wizard IA (conseil du mentor)**
+  - Suivre la doc CodSpeed pas à pas sur un petit repo Rust (tu as déjà `codspeed-playground`), configurer l'action GitHub `CodSpeedHQ/action` toi-même, sans passer par l'assistant d'installation.
+  - Vérifier que tu comprends chaque ligne du YAML (`cli/codspeed.yml`, workflow GitHub Actions).
+
+- **J9 — `codspeed-rust` : le harness**
+  - Lire le repo `CodSpeedHQ/codspeed-rust` : comment les macros de bench s'articulent avec `criterion`, ce qui est spécifique à CodSpeed vs standard.
+  - Pratique : ajouter 2-3 nouveaux benchmarks dans `playground/benches/` qui couvrent des patterns différents (boucle CPU-bound, allocation mémoire, I/O simulé).
+
+- **J10 — `instrument-hooks`**
+  - Lire `CodSpeedHQ/instrument-hooks` : c'est la couche commune utilisée par tous les langages (Rust, C++, Node, Python…). Repérer l'API exposée (start/stop d'un bench, marqueurs).
+  - Pratique : essayer de tracer, dans le code, le chemin depuis un appel `#[codspeed::bench]` (ou équivalent) jusqu'à l'appel dans `instrument-hooks`.
+
+- **J11 — CLI `codspeed` (repo principal)**
+  - Lire `CodSpeedHQ/codspeed` : les 3 instruments (simulation CPU-cycles, mémoire via eBPF, walltime) — comprendre à quoi sert chacun et pourquoi walltime nécessite des runners dédiés ("Macro Runners") pour être stable.
+  - Pratique : lancer `codspeed exec -- ./ton-binaire` en local, comparer avec un run en mode `--mode walltime`, regarder la différence de sortie.
+
+- **J12 — Stack unwinding : frame pointer**
+  - Théorie : comment un unwinder par frame pointer marche (`rbp` chaîné), pourquoi certains binaires compilés en `-fomit-frame-pointer` cassent ça.
+  - Pratique : compiler `playground` avec et sans `-fno-omit-frame-pointer`, comparer un `perf record`/`samply record` sur les deux.
+
+- **J13 — Stack unwinding : DWARF (via `samply`)**
+  - Théorie : `.eh_frame`, CFI (Call Frame Information), pourquoi c'est plus lent mais plus fiable sans frame pointer.
+  - Pratique : lire le sous-module `samply` dans le repo `codspeed` (mentionné par ton mentor), faire un `samply record` sur `playground`, ouvrir le profil dans le Firefox Profiler UI.
+
+- **J14 — Consolidation**
+  - Résumer en quelques phrases (pour toi) : quand CodSpeed a besoin de frame pointers, quand il tombe sur DWARF, et où `samply`/`framehop` interviennent dans la chaîne.
+
+---
+
+## Semaine 3 (J15-J20) — eBPF, graphes, et projet final
+
+- **J15 — eBPF : les bases**
+  - Théorie : qu'est-ce qu'un programme eBPF (bytecode vérifié, s'exécute dans le kernel, attaché à un hook : syscall, kprobe, tracepoint), le rôle du verifier, les maps eBPF pour faire remonter des données en userspace.
+  - Ressource : l'article "DWARF-based Stack Walking Using eBPF" de Polar Signals donne un bon exemple concret de ce qu'eBPF peut/ne peut pas faire pour du stack walking.
+
+- **J16 — `memtrack` dans le repo CodSpeed**
+  - Lire la crate `memtrack` dans le repo open-source `codspeed` — c'est l'exemple concret cité par ton mentor pour le tracking mémoire via eBPF (allocations heap, peak usage).
+  - Pratique : identifier quels hooks (probablement `malloc`/`free` via uprobes, ou tracepoints) sont utilisés, et comment les données remontent jusqu'au rapport.
+
+- **J17 — eBPF pratique légère**
+  - Si le temps le permet : essayer un tutoriel type "hello world eBPF" (bpftrace ou libbpf-rs) pour juste tracer les appels `openat` d'un processus. L'objectif n'est pas de devenir expert eBPF mais de démystifier "ça fait quoi concrètement".
+
+- **J18 — Graphes : BFS/DFS**
+  - Théorie : BFS (parcours par niveaux, file), DFS (parcours en profondeur, pile/récursion), complexité, cas d'usage (résolution de dépendances, détection de cycles — pertinent si CodSpeed doit résoudre des graphes d'appel ou de dépendances).
+  - Pratique : implémenter BFS et DFS en Rust dans `playground`, **et les benchmarker avec CodSpeed** — bonne occasion de relier graphes + outil CodSpeed dans le même exercice.
+
+- **J19 — Mini-projet : bout en bout**
+  - Objectif : dans `codspeed-playground`, avoir un mini pipeline qui illustre plusieurs des concepts vus :
+    1. Un binaire avec plusieurs fonctions à profiler (dont BFS/DFS).
+    2. Des benchmarks `codspeed-rust` dessus, exécutés via la CI GitHub Actions.
+    3. Une inspection manuelle du process (`/proc/<pid>/maps`, `strace`) pendant un run local.
+    4. Un profil `samply` du binaire pour visualiser les stacks.
+
+- **J20 — Révision + questions pour l'équipe**
+  - Relire tes notes de la semaine 1 à 3, identifier 3-5 questions précises à poser le premier jour (ex : "comment `instrument-hooks` distingue les instruments au runtime ?", "pourquoi walltime nécessite un runner dédié ?").
+  - Repos GitHub bien nettoyé et poussé, prêt à montrer si besoin.
+
+---
+
+## Repos et ressources de référence
+
+- `CodSpeedHQ/codspeed` — CLI, instruments (simulation / mémoire eBPF / walltime), sous-module `samply`, crate `memtrack`
+- `CodSpeedHQ/codspeed-rust` — harness Rust
+- `CodSpeedHQ/instrument-hooks` — couche commune à tous les langages
+- `CodSpeedHQ/action` — GitHub Action officielle
+- `mstange/samply` — profiler CLI, unwinding frame pointer + DWARF, sous-module de `codspeed`
+- `mstange/framehop` — lib Rust de stack unwinding utilisée par `samply`
+- Polar Signals — article "DWARF-based Stack Walking Using eBPF" (bon complément pour comprendre les limites d'eBPF sur l'unwinding)
+
+## Principe général
+
+Pas de lecture de bouquin en continu : chaque concept ci-dessus est associé à un test dans ton repo. Si un jour tu bloques sur la théorie, passe direct à l'exercice pratique — souvent ça débloque la compréhension plus vite que de continuer à lire.
