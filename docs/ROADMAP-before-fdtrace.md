@@ -52,7 +52,7 @@ Garde le reste de `fdtrace` en référence tout du long de cette prépa (voir J8
 
 ## J5-J6 — eBPF : les bases (le vrai nouveau sujet)
 
-C'est le sujet le plus neuf pour toi (absent de tes projets actuels, et explicitement écarté dans le README de `fdtrace` pour des raisons de complexité d'environnement) — mais comme c'est nouveau, ça mérite plus de temps réel que les fondamentaux Linux. Bon fil rouge : comprendre concrètement *pourquoi* tu avais raison d'écarter eBPF pour `fdtrace` (permissions, portabilité CI) mais pourquoi CodSpeed l'utilise quand même pour `memtrack` (contexte différent : CI contrôlée par CodSpeed, pas un binaire tiers portable).
+C'est le sujet le plus neuf pour toi (absent de tes projets 42 actuels) et celui que ton mentor a mentionné en dernier point — mais comme c'est nouveau, ça mérite plus de temps réel que les fondamentaux Linux.
 
 - **J5 — Concepts**
   - Qu'est-ce qu'un programme eBPF (bytecode vérifié par le kernel verifier, attaché à un hook : syscall/kprobe/uprobe/tracepoint), les maps eBPF pour faire remonter des données en userspace, pourquoi c'est plus sûr qu'un module kernel classique.
@@ -63,18 +63,17 @@ C'est le sujet le plus neuf pour toi (absent de tes projets actuels, et explicit
 
 ---
 
-## J7-J8 — Stack unwinding : de l'attribution best-effort de `fdtrace` au DWARF/CFI réel
+## J7-J8 — Stack unwinding : ce qui est vraiment nouveau (DWARF/CFI)
 
-Le frame pointer (`rbp` chaîné), tu l'as déjà manipulé en détail avec `libasm`/l'ABI x86-64. Et avec `fdtrace`, tu as déjà fait de l'attribution best-effort (une seule adresse de retour + `addr2line` en sous-process). Le vrai écart à combler : passer d'une adresse unique à un **vrai stack unwinding multi-frames**, et d'un `addr2line` en sous-process à un lecteur DWARF natif.
+Le frame pointer (`rbp` chaîné), tu l'as déjà manipulé en détail avec `libasm`/l'ABI x86-64 — pas la peine d'y passer du temps. Le vrai nouveau, c'est le format DWARF/CFI et la mécanique `samply`.
 
 - **J7 — Frame pointer, en confirmation rapide**
-  - Compile `playground` avec/sans `-fno-omit-frame-pointer`, compare un `samply record` sur les deux — confirmation de ce que tu sais déjà de l'ABI.
+  - Compile `playground` avec/sans `-fno-omit-frame-pointer`, compare un `samply record` sur les deux — ça doit confirmer ce que tu sais déjà de l'ABI plutôt que l'enseigner.
 
-- **J8 — DWARF/CFI + upgrade de `fdtrace`**
-  - `.eh_frame`, CFI (Call Frame Information), pourquoi c'est plus lent mais plus fiable sans frame pointer, et pourquoi ça permet de remonter *toute* la pile plutôt qu'un seul retour.
+- **J8 — DWARF/CFI en détail (nouveau)**
+  - `.eh_frame`, CFI (Call Frame Information), pourquoi c'est plus lent mais plus fiable sans frame pointer.
   - Doc à lire : [Performance Profiling and Flame Graphs](https://codspeed.io/docs/features/profiling.md).
-  - Pratique (le vrai exercice) : dans `fdtrace`, remplace l'appel `addr2line` en sous-process par un parsing DWARF natif via la crate `gimli` (ou expérimente `framehop` pour l'unwinding multi-frames plutôt que la simple lecture du retour au sommet de pile). Regarde comment `samply`/`framehop` font ça pour t'en inspirer.
-  - Complément : `samply record` sur `playground`, ouvrir le profil dans le Firefox Profiler UI, comparer visuellement avec la sortie actuelle de `fdtrace`.
+  - Pratique : lire le sous-module `samply` du repo `codspeed`, faire un `samply record` sur `playground`, ouvrir le profil dans le Firefox Profiler UI.
 
 ---
 
@@ -109,8 +108,7 @@ Vu que les fondamentaux sont déjà acquis, tu as ~6 jours de marge réelle. Sug
 2. Approfondir eBPF au-delà du "hello world" (ex: écrire un petit équivalent simplifié de `memtrack` sur un cas jouet).
 3. Explorer `mstange/framehop` (lib Rust d'unwinding utilisée par `samply`) — pertinent vu ton niveau en Rust/ASM.
 4. Piocher un chapitre ciblé dans *Systems Performance* (Brendan Gregg) sur le tracing/eBPF, en écho à J5-J9.
-5. Repos GitHub personnels nettoyés et documentés (`krpsim`, `fdtrace` notamment, si tu comptes les montrer).
-6. Pousser plus loin l'upgrade DWARF de `fdtrace` (J8) : gérer les frames inlinées, ou suivre plusieurs threads.
+5. Repos GitHub personnels nettoyés et documentés (`krpsim` notamment, si tu comptes le montrer).
 
 ## J20 — Révision + questions pour l'équipe
 
@@ -121,8 +119,6 @@ Vu que les fondamentaux sont déjà acquis, tu as ~6 jours de marge réelle. Sug
 
 ## Repos et ressources de référence (pré-stage)
 
-- `moha-bekh/fdtrace` — ton propre traceur syscall ; référence constante pour J1 et J8
-- `gimli-rs/gimli` — lecteur DWARF natif en Rust, pour l'upgrade de J8
 - `CodSpeedHQ/codspeed` — CLI, instruments (simulation / mémoire eBPF / walltime), sous-module `samply`, crate `memtrack`
 - `CodSpeedHQ/codspeed-rust` — harness Rust
 - `CodSpeedHQ/instrument-hooks` — couche commune à tous les langages
